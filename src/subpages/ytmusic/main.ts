@@ -14,20 +14,8 @@ import {
   parseDuration as formatParseDuration,
   rememberAvatar,
 } from "./api";
-
-export interface Track {
-  id: string;
-  title: string;
-  artist: string;
-  album?: string;
-  duration: number;
-  durationText?: string;
-  artwork: string;
-  source: string;
-  addedAt?: number;
-  streamUrl?: string;
-  [key: string]: any;
-}
+import type { Track } from "../../types";
+export type { Track };
 
 export const audioEngine = hostAudioEngine;
 export const saveTrack = hostSaveTrack;
@@ -369,11 +357,22 @@ export class YtMusicHandler {
           durationText: v.duration || formatTimeSeconds(durSec),
           artwork: v.thumb_lg || v.thumb || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
           streamUrl: `/api/audio/stream?id=${v.id}`,
-          views: v.views || "",
+          views: v.views ? String(v.views) : "",
         };
       });
     } catch (err) {
       console.warn("[YtMusicHandler] search failed:", err);
+      return [];
+    }
+  }
+
+  async getTrendingCharts(): Promise<YtMusicTrack[]> {
+    try {
+      const results = await this.search("Top Music Hits 2026", "songs");
+      if (results.length > 0) return results;
+      return await this.search("Popular Music Charts", "songs");
+    } catch (e) {
+      console.warn("[YtMusicHandler] getTrendingCharts error:", e);
       return [];
     }
   }
@@ -383,7 +382,7 @@ export class YtMusicHandler {
       id: track.videoId || track.id.replace("yt_", ""),
       title: track.title,
       artist: track.artist,
-      album: track.album,
+      album: track.album || "YouTube Music",
       duration: track.duration,
       durationText: track.durationText,
       artwork: track.artwork,
