@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-dark: #05070c;
+    --bg-panel: #0a0e17;
+    --bg-surface: #101623;
+    --border-subtle: rgba(255, 255, 255, 0.07);
+    --border-glow: rgba(56, 189, 248, 0.25);
+    --accent-cyan: #38bdf8;
+    --accent-emerald: #34d399;
+    --accent-violet: #a78bfa;
+    --accent-rose: #fb7185;
+  }
+
+  body {
+    background-color: #05070c;
+    color: #f1f5f9;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow-x: hidden;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background: rgba(56, 189, 248, 0.3);
+    color: #ffffff;
+  }
+
+  /* Custom Sleek Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #060910;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1e293b;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #334155;
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.02); }
+}
+
+@keyframes equalizerWave {
+  0% { height: 18%; }
+  50% { height: 95%; }
+  100% { height: 32%; }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 4s ease-in-out infinite;
+}
+
+.equalizer-bar-1 { animation: equalizerWave 0.75s ease-in-out infinite alternate; }
+.equalizer-bar-2 { animation: equalizerWave 1.05s ease-in-out infinite alternate 0.15s; }
+.equalizer-bar-3 { animation: equalizerWave 0.62s ease-in-out infinite alternate 0.35s; }
+.equalizer-bar-4 { animation: equalizerWave 0.88s ease-in-out infinite alternate 0.1s; }
+.equalizer-bar-5 { animation: equalizerWave 1.25s ease-in-out infinite alternate 0.25s; }
+
+/* Subtle glassmorphism card highlights */
+.glass-panel {
+  background: rgba(10, 14, 23, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}

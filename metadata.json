@@ -1,0 +1,10 @@
+{
+  "name": "Spotui Web",
+  "description": "High-performance browser music workspace, Web Audio DSP equalizer, full-featured dedicated BrowserOS proxy suite, YouTube & Spotify streamer, and persistent audio vault.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

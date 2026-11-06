@@ -1,0 +1,26 @@
+{
+  "SPOT-KF3K-DV7W": {
+    "code": "SPOT-KF3K-DV7W",
+    "version": 1,
+    "createdAt": 1792586045387,
+    "updatedAt": 1792586045387,
+    "deviceCount": 1,
+    "tracks": [],
+    "playlists": [],
+    "settings": null,
+    "eqPresets": [],
+    "history": []
+  },
+  "SPOT-5W8H-87KF": {
+    "code": "SPOT-5W8H-87KF",
+    "version": 1,
+    "createdAt": 1792757598830,
+    "updatedAt": 1792757598830,
+    "deviceCount": 1,
+    "tracks": [],
+    "playlists": [],
+    "settings": null,
+    "eqPresets": [],
+    "history": []
+  }
+}
