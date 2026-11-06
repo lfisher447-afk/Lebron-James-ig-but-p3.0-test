@@ -84,8 +84,12 @@ export const SetupWizardModal: React.FC<SetupWizardModalProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono text-zinc-400">Step {currentStep} of 4</span>
             <button
-              onClick={onClose}
+              onClick={() => {
+                localStorage.setItem('spotui_setup_completed', 'true');
+                onClose();
+              }}
               className="p-1.5 rounded-xl bg-black/40 hover:bg-black/60 text-zinc-400 hover:text-white transition"
+              aria-label="Close setup wizard"
             >
               <X size={18} />
             </button>

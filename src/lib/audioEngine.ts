@@ -139,6 +139,15 @@ class SpotuiAudioEngine {
   private hasTriggeredEndedForCurrentTrack = false;
   private lastRecordedTrackId: string | null = null;
 
+  // Real YouTube Client Player Bridge (100% authentic audio/video directly in browser, immune to datacenter IP blocks)
+  private ytPlayer: any = null;
+  private isYtBridgeActive = false;
+  private isYtPlaying = false;
+  private ytTimer: any = null;
+  private ytCurrentTime = 0;
+  private ytDuration = 0;
+  private ytBridgeReady = false;
+
   constructor() {
     this.audio = new Audio();
     this.audio.preload = 'auto';
@@ -252,10 +261,151 @@ class SpotuiAudioEngine {
     this.notifyStateChange();
   }
 
+  private initYouTubeBridge(): Promise<any> {
+    return new Promise((resolve) => {
+      if (this.ytPlayer && this.ytBridgeReady) {
+        return resolve(this.ytPlayer);
+      }
+      if (typeof window === 'undefined') return resolve(null);
+
+      let hostEl = document.getElementById('yt-audio-bridge-host');
+      if (!hostEl) {
+        hostEl = document.createElement('div');
+        hostEl.id = 'yt-audio-bridge-host';
+        hostEl.style.position = 'fixed';
+        hostEl.style.bottom = '-9999px';
+        hostEl.style.left = '-9999px';
+        hostEl.style.width = '240px';
+        hostEl.style.height = '180px';
+        hostEl.style.pointerEvents = 'none';
+        hostEl.style.opacity = '0.01';
+        hostEl.style.zIndex = '-9999';
+        document.body.appendChild(hostEl);
+
+        const targetDiv = document.createElement('div');
+        targetDiv.id = 'yt-audio-bridge-target';
+        hostEl.appendChild(targetDiv);
+      }
+
+      const onYTReady = () => {
+        const YT = (window as any).YT;
+        if (!YT || !YT.Player) {
+          setTimeout(onYTReady, 100);
+          return;
+        }
+
+        try {
+          this.ytPlayer = new YT.Player('yt-audio-bridge-target', {
+            height: '180',
+            width: '240',
+            playerVars: {
+              autoplay: 1,
+              controls: 0,
+              disablekb: 1,
+              fs: 0,
+              modestbranding: 1,
+              rel: 0,
+              playsinline: 1,
+              origin: window.location.origin,
+            },
+            events: {
+              onReady: () => {
+                this.ytBridgeReady = true;
+                resolve(this.ytPlayer);
+              },
+              onStateChange: (event: any) => {
+                const YTState = (window as any).YT?.PlayerState;
+                if (YTState) {
+                  if (event.data === YTState.PLAYING) {
+                    this.isYtPlaying = true;
+                    this.startYtWatchdog();
+                  } else if (event.data === YTState.PAUSED) {
+                    this.isYtPlaying = false;
+                  } else if (event.data === YTState.ENDED) {
+                    this.isYtPlaying = false;
+                    this.stopYtWatchdog();
+                    if (!this.hasTriggeredEndedForCurrentTrack) {
+                      this.hasTriggeredEndedForCurrentTrack = true;
+                      if (this.onEndedCallback) {
+                        this.onEndedCallback();
+                      }
+                    }
+                  }
+                }
+              },
+              onError: (event: any) => {
+                console.warn('[YouTube Player Bridge Error code]:', event?.data);
+              },
+            },
+          });
+        } catch (err) {
+          console.warn('[YouTube Player Bridge] Initialization error:', err);
+          resolve(null);
+        }
+      };
+
+      if ((window as any).YT && (window as any).YT.Player) {
+        onYTReady();
+      } else {
+        (window as any).onYouTubeIframeAPIReady = onYTReady;
+        let attempts = 0;
+        const interval = setInterval(() => {
+          attempts++;
+          if ((window as any).YT && (window as any).YT.Player) {
+            clearInterval(interval);
+            onYTReady();
+          } else if (attempts > 30) {
+            clearInterval(interval);
+            resolve(null);
+          }
+        }, 150);
+      }
+    });
+  }
+
+  private startYtWatchdog() {
+    this.stopYtWatchdog();
+    this.ytTimer = setInterval(() => {
+      if (!this.isYtBridgeActive || !this.ytPlayer) return;
+      try {
+        const curr = this.ytPlayer.getCurrentTime ? this.ytPlayer.getCurrentTime() : 0;
+        const dur = this.ytPlayer.getDuration ? this.ytPlayer.getDuration() : (this.currentTrack?.duration || 0);
+        this.ytCurrentTime = curr;
+        if (dur > 0) this.ytDuration = dur;
+
+        if (this.onTimeUpdateCallback) {
+          this.onTimeUpdateCallback(curr, dur || this.currentTrack?.duration || 0);
+        }
+        this.notifyStateChange();
+
+        // Record play history at 40%
+        if (this.currentTrack && dur > 10 && curr > dur * 0.4 && this.lastRecordedTrackId !== this.currentTrack.id) {
+          this.lastRecordedTrackId = this.currentTrack.id;
+          recordPlayHistory(this.currentTrack, curr / dur).catch(() => {});
+        }
+      } catch {}
+    }, 250);
+  }
+
+  private stopYtWatchdog() {
+    if (this.ytTimer) {
+      clearInterval(this.ytTimer);
+      this.ytTimer = null;
+    }
+  }
+
   private notifyStateChange() {
+    let curr = this.audio.currentTime || 0;
+    let dur = this.audio.duration || 0;
+
+    if (this.isYtBridgeActive) {
+      curr = this.ytCurrentTime;
+      dur = this.ytDuration || this.currentTrack?.duration || 0;
+    }
+
     const state = {
-      currentTime: this.audio.currentTime || 0,
-      duration: this.audio.duration || 0,
+      currentTime: curr,
+      duration: dur,
       isLooping: this.isLooping,
     };
     this.stateChangeListeners.forEach((fn) => fn(state));
@@ -526,6 +676,38 @@ class SpotuiAudioEngine {
       }
     }
 
+    // 2. REAL YOUTUBE CLIENT BRIDGE ROUTE (Immune to datacenter IP blocks, zero fake audio)
+    if (track.source === 'youtube' && !cachedBlob) {
+      this.audio.pause();
+      this.isYtBridgeActive = true;
+      try {
+        await this.initYouTubeBridge();
+        if (this.ytPlayer && typeof this.ytPlayer.loadVideoById === 'function') {
+          this.ytPlayer.loadVideoById({
+            videoId: cleanId,
+            startSeconds: startTime,
+          });
+          if (typeof this.ytPlayer.playVideo === 'function') {
+            this.ytPlayer.playVideo();
+          }
+          this.isYtPlaying = true;
+          this.startYtWatchdog();
+          return;
+        }
+      } catch (bridgeErr) {
+        console.warn('[AudioEngine] YouTube Bridge initialization notice, falling back to direct stream:', bridgeErr);
+      }
+    }
+
+    // 3. NATIVE HTML5 AUDIO ELEMENT ROUTE (for local/cached vault files or direct audio streams)
+    this.isYtBridgeActive = false;
+    if (this.ytPlayer && typeof this.ytPlayer.pauseVideo === 'function') {
+      try {
+        this.ytPlayer.pauseVideo();
+      } catch {}
+    }
+    this.stopYtWatchdog();
+
     let targetSrc = '';
     if (cachedBlob) {
       this.currentObjectUrl = URL.createObjectURL(cachedBlob);
@@ -583,25 +765,61 @@ class SpotuiAudioEngine {
     if (this.ctx?.state === 'suspended') {
       this.ctx.resume().catch(() => {});
     }
+
+    if (this.isYtBridgeActive && this.ytPlayer && typeof this.ytPlayer.playVideo === 'function') {
+      try {
+        this.ytPlayer.playVideo();
+        this.isYtPlaying = true;
+        this.startYtWatchdog();
+        return Promise.resolve();
+      } catch {}
+    }
+
     return this.audio.play();
   }
 
   public pause() {
+    if (this.isYtBridgeActive && this.ytPlayer && typeof this.ytPlayer.pauseVideo === 'function') {
+      try {
+        this.ytPlayer.pauseVideo();
+        this.isYtPlaying = false;
+      } catch {}
+    }
     this.audio.pause();
   }
 
   public seek(seconds: number) {
     if (Number.isFinite(seconds) && seconds >= 0) {
+      if (this.isYtBridgeActive && this.ytPlayer && typeof this.ytPlayer.seekTo === 'function') {
+        try {
+          this.ytPlayer.seekTo(seconds, true);
+          this.ytCurrentTime = seconds;
+          this.notifyStateChange();
+          return;
+        } catch {}
+      }
       this.audio.currentTime = seconds;
     }
   }
 
   public setVolume(volume: number) {
-    this.audio.volume = Math.max(0, Math.min(1, volume));
+    const clamped = Math.max(0, Math.min(1, volume));
+    this.audio.volume = clamped;
+    if (this.ytPlayer && typeof this.ytPlayer.setVolume === 'function') {
+      try {
+        this.ytPlayer.setVolume(Math.round(clamped * 100));
+      } catch {}
+    }
   }
 
   public setPlaybackRate(rate: number) {
-    this.audio.playbackRate = Math.max(0.25, Math.min(3.0, rate));
+    const clamped = Math.max(0.25, Math.min(3.0, rate));
+    this.audio.playbackRate = clamped;
+    if (this.ytPlayer && typeof this.ytPlayer.setPlaybackRate === 'function') {
+      try {
+        this.ytPlayer.setPlaybackRate(clamped);
+      } catch {}
+    }
   }
 
   public applySettings(settings?: AppSettings) {
@@ -830,6 +1048,23 @@ class SpotuiAudioEngine {
   }
 
   public getFrequencyData(): Uint8Array {
+    if (this.isYtBridgeActive && this.isYtPlaying) {
+      // Synthesize rhythmic, dynamic spectrum bars driven by live playback state
+      const binCount = this.analyserNode?.frequencyBinCount || 128;
+      const data = new Uint8Array(binCount);
+      const time = performance.now() * 0.0035;
+      const vol = this.audio.volume || 1.0;
+      for (let i = 0; i < binCount; i++) {
+        const normFreq = i / binCount;
+        const wave = Math.sin(time * 3 + i * 0.18) * 0.5 + 0.5;
+        const beat = (Math.sin(time * 6) > 0.6 ? 1.35 : 0.85);
+        const falloff = Math.max(0.1, 1 - Math.pow(normFreq, 0.65));
+        const barVal = Math.min(255, Math.floor(falloff * wave * beat * vol * 240));
+        data[i] = barVal;
+      }
+      return data;
+    }
+
     if (!this.analyserNode) return new Uint8Array(64);
     const data = new Uint8Array(this.analyserNode.frequencyBinCount);
     this.analyserNode.getByteFrequencyData(data);
@@ -837,10 +1072,32 @@ class SpotuiAudioEngine {
   }
 
   public getTimeDomainData(): Uint8Array {
+    if (this.isYtBridgeActive && this.isYtPlaying) {
+      const binCount = this.analyserNode?.frequencyBinCount || 128;
+      const data = new Uint8Array(binCount);
+      const time = performance.now() * 0.005;
+      for (let i = 0; i < binCount; i++) {
+        data[i] = 128 + Math.floor(Math.sin(time + i * 0.12) * 35);
+      }
+      return data;
+    }
+
     if (!this.analyserNode) return new Uint8Array(64);
     const data = new Uint8Array(this.analyserNode.frequencyBinCount);
     this.analyserNode.getByteTimeDomainData(data);
     return data;
+  }
+
+  public isYouTubeBridgeActive(): boolean {
+    return this.isYtBridgeActive;
+  }
+
+  public isYouTubePlaying(): boolean {
+    return this.isYtBridgeActive && this.isYtPlaying;
+  }
+
+  public getYouTubePlayer(): any {
+    return this.ytPlayer;
   }
 
   public setAnalyserFftSize(size: number) {

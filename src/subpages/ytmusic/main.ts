@@ -5,7 +5,7 @@ import { Parser } from "youtubei.js";
 import { audioEngine as hostAudioEngine } from "../../lib/audioEngine";
 import { saveTrack as hostSaveTrack } from "../../lib/db";
 
-// Direct integration into api.tsx engine
+// Direct integration into api.ts engine
 import {
   itSearch,
   itVideo,
@@ -13,6 +13,19 @@ import {
   formatTime,
   parseDuration as formatParseDuration,
   rememberAvatar,
+  workerSearch,
+  workerSuggestions,
+  workerAlbum,
+  workerArtist,
+  workerPlaylist,
+  workerSimilar,
+  workerFeatured,
+  searchUnified,
+  suggestionsUnified,
+  resolveThumbnail,
+  getActiveEngine,
+  setActiveEngine,
+  type YtMusicEngineType,
 } from "./api";
 import type { Track } from "../../types";
 export type { Track };
@@ -206,6 +219,7 @@ export function formatTimeSeconds(seconds: number): string {
 export type PanelRatio = "1:1" | "2:3" | "3:4" | "1:2" | "2:5";
 export type CachingMode = "auto" | "on-demand" | "off";
 export type PlayerBackground = "none" | "frost" | "frost-motion" | "blur" | "blur-motion";
+export type DeckMode = "audio" | "video";
 
 export let config = {
   language: "en",
@@ -227,6 +241,8 @@ export let config = {
   cachingMode: "auto" as CachingMode,
   sponsorblock: true,
   hasCompletedBoot: true,
+  engine: getActiveEngine() as YtMusicEngineType,
+  deckMode: "audio" as DeckMode,
 };
 
 type AppConfig = typeof config;
@@ -234,6 +250,7 @@ const lsKey = "ytmusic_config";
 try {
   const saved = localStorage.getItem(lsKey);
   if (saved) Object.assign(config, JSON.parse(saved));
+  config.engine = getActiveEngine();
 } catch {}
 
 const configListeners = new Set<() => void>();
@@ -250,6 +267,9 @@ export function useConfig() {
 
 export function setConfig<K extends keyof AppConfig>(key: K, val: AppConfig[K]) {
   (config as any)[key] = val;
+  if (key === "engine") {
+    setActiveEngine(val as YtMusicEngineType);
+  }
   localStorage.setItem(lsKey, JSON.stringify(config));
   notifyConfig();
 }
@@ -258,6 +278,10 @@ export function useCachingMode() { useConfig(); return config.cachingMode; }
 export function setCachingMode(m: CachingMode) { setConfig("cachingMode", m); }
 export function usePlayerBackground() { useConfig(); return config.playerBackground; }
 export function setPlayerBackground(b: PlayerBackground) { setConfig("playerBackground", b); }
+export function useDeckMode() { useConfig(); return config.deckMode; }
+export function setDeckMode(m: DeckMode) { setConfig("deckMode", m); }
+export function useEngine() { useConfig(); return config.engine; }
+export function setEngine(e: YtMusicEngineType) { setConfig("engine", e); }
 
 export function themer() {
   const theme = config.theme === "auto" ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : config.theme;
@@ -340,12 +364,13 @@ export class YtMusicHandler {
 
     try {
       const q = filter === "songs" ? `${query} audio` : query;
-      const res = await itSearch(q);
+      const videos = await searchUnified(q, config.engine);
 
-      return res.videos.map((v) => {
+      return videos.map((v) => {
         const title = cleanTrackTitle(v.title);
         const artist = cleanArtistName(v.channel || "YouTube Artist");
-        const durSec = parseDuration(v.duration) || 195;
+        const durSec = v.durationSeconds || parseDuration(v.duration) || 195;
+        const artwork = resolveThumbnail(v.thumb_lg || v.thumb, v.id);
 
         return {
           id: `yt_${v.id}`,
@@ -355,7 +380,7 @@ export class YtMusicHandler {
           album: "YouTube Music",
           duration: durSec,
           durationText: v.duration || formatTimeSeconds(durSec),
-          artwork: v.thumb_lg || v.thumb || `https://i.ytimg.com/vi/${v.id}/hqdefault.jpg`,
+          artwork,
           streamUrl: `/api/audio/stream?id=${v.id}`,
           views: v.views ? String(v.views) : "",
         };
@@ -368,9 +393,9 @@ export class YtMusicHandler {
 
   async getTrendingCharts(): Promise<YtMusicTrack[]> {
     try {
-      const results = await this.search("Top Music Hits 2026", "songs");
+      const results = await this.search("Top Hits 2026", "songs");
       if (results.length > 0) return results;
-      return await this.search("Popular Music Charts", "songs");
+      return await this.search("Billboard Hot Songs", "songs");
     } catch (e) {
       console.warn("[YtMusicHandler] getTrendingCharts error:", e);
       return [];
@@ -580,8 +605,8 @@ export async function getSearchResults() {
 export async function getSearchSuggestions(query: string) {
   if (!query) return;
   try {
-    const suggs = await itSearch(query);
-    setSearchStore("suggestions", "data", suggs.videos.slice(0, 8).map(v => v.title));
+    const list = await suggestionsUnified(query, config.engine);
+    setSearchStore("suggestions", "data", list.slice(0, 8));
   } catch {}
 }
 

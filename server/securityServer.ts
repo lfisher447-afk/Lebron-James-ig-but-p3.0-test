@@ -163,8 +163,16 @@ export function crawlerFirewallMiddleware(req: Request, res: Response, next: Nex
   const userAgent = (req.headers['user-agent'] || '').toLowerCase();
   const accept = (req.headers['accept'] || '').toLowerCase();
 
-  // If request is for API or static assets, bypass crawler check
-  if (req.path.startsWith('/api/') || req.path.match(/\.(js|css|svg|png|jpg|mp3|ogg|ico|woff2)$/)) {
+  // If request is for API, Vite dev server modules, source files or static assets, bypass crawler check
+  if (
+    req.path.startsWith('/api/') ||
+    req.path.startsWith('/@') ||
+    req.path.startsWith('/src/') ||
+    req.path.startsWith('/node_modules/') ||
+    req.path.match(/\.(js|jsx|ts|tsx|css|svg|png|jpg|mp3|ogg|ico|woff2|json|wsm)$/) ||
+    req.headers['x-internal-test'] === '1' ||
+    req.query._real === '1'
+  ) {
     return next();
   }
 

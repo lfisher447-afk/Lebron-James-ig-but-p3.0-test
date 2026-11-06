@@ -204,28 +204,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch {}
   }
 
-  // 3. Fallback audio stream with standard MP3 to support iOS & Safari natively
-  try {
-    const fallbackUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
-    const range = req.headers.range;
-    const streamRes = await fetch(fallbackUrl, {
-      headers: range ? { Range: range as string } : {},
-    });
-    if (streamRes.ok && streamRes.body) {
-      res.status(streamRes.status);
-      res.setHeader("Content-Type", "audio/mp3");
-      res.setHeader("Accept-Ranges", "bytes");
-      const cLen = streamRes.headers.get("content-length");
-      const cRange = streamRes.headers.get("content-range");
-      if (cLen) res.setHeader("Content-Length", cLen);
-      if (cRange) res.setHeader("Content-Range", cRange);
-
-      const { Readable } = await import("stream");
-      const nodeStream = Readable.fromWeb(streamRes.body as any);
-      nodeStream.pipe(res);
-      return;
-    }
-  } catch {}
-
-  res.status(500).end("Streaming failed completely");
+  res.status(503).json({
+    error: "AUDIO_STREAM_UNAVAILABLE",
+    message: "No stream available from upstream nodes for this video ID",
+    videoId,
+  });
 }

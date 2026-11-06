@@ -252,9 +252,7 @@ export default function App() {
     } catch {}
     setShowDspModal(true);
   }, []);
-  const [showSetupWizard, setShowSetupWizard] = useState(() => {
-    return !localStorage.getItem('spotui_setup_completed');
-  });
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
 
   // OAuth State
   const [isSpotifyConnected, setIsSpotifyConnected] = useState(false);
